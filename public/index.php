@@ -12,6 +12,8 @@
 // Tick... Tock... Tick... Tock...
 // --------------------------------------------------------------
 define('LARAVEL_START', microtime(true));
+# Comment out the following line to use regular (fat) Laravel
+define('LARAVEL_LITE', true);
 
 // --------------------------------------------------------------
 // Indicate that the request is from the web.
@@ -31,4 +33,9 @@ unset($web);
 // --------------------------------------------------------------
 // Launch Laravel.
 // --------------------------------------------------------------
-require path('sys').'laravel.php';
+if ( defined('LARAVEL_LITE') ) {
+    require path('sys').'laravel_boot.php';
+}
+else {
+    require path('sys').'laravel.php';
+}
