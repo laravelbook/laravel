@@ -1,6 +1,8 @@
 <?php namespace Laravel\CLI\Tasks;
 
 use Laravel\Database;
+use Laravel\Bundle;
+use Laravel\Str;
 
 class Seeder extends Task {
 
@@ -9,7 +11,7 @@ class Seeder extends Task {
      *
      * @var array
      */
-    protected $seeds;
+    protected $seedFiles;
 
     /**
      * Seed the database from the given path.
@@ -18,17 +20,15 @@ class Seeder extends Task {
      * @return int
      */
     public function seed( $arguments = array() ) {
-        $path = array_get( $arguments, 0, path( 'app' ) . DS . 'seeds' );
-
         $total = 0;
 
-        foreach ( $this->getFiles( $path ) as $file ) {
-            $records = $this->getRequire( $file );
+        foreach ( $this->globSeedFiles( ) as $file ) {
+            $records = $this->loadSeedFile( $file );
 
             // We'll grab the table name here, which could either come from the array or
             // from the filename itself. Then, we will simply insert the records into
             // the databases.
-            $table = $this->getTable( $records, $file );
+            $table = $this->fetchTableName( $records, $file );
 
             Database::table( $table )->delete();
 
@@ -48,27 +48,45 @@ class Seeder extends Task {
      * @param string  $path
      * @return array
      */
-    protected function getFiles( $path ) {
-        if ( isset( $this->seeds ) ) return $this->seeds;
+    protected function globSeedFiles( ) {
+        if ( isset( $this->seedFiles ) ) return $this->seedFiles;
 
-        // If the seeds haven't been read before, we will glob the directory and sort
+        // If the seeds haven't been read before, we will glob the directories and sort
         // them alphabetically just in case the developer is using numbers to make
         // the seed run in a certain order based on their database design needs.
-        $files = glob( $path . DS . '*.php' );
+
+        $folders = array( path( 'app' ) . 'seeds' . DS );
+        foreach ( Bundle::$bundles as $bundle ) {
+            $folders[] = Bundle::path( $bundle['location'] ) . 'seeds' . DS;
+        }
+
+        $files = array();
+        foreach ( $folders as $folder ) {
+            $files = array_merge( $files, glob( $folder . '*.php' ) );
+        }
+
+        if ( false !== $this->getParameter( 'except' ) ) {
+            $exclude = explode( ',', $this->getParameter( 'except' ) );
+            foreach ( $files as $key => $file ) {
+                if ( in_array( pathinfo( $file, PATHINFO_FILENAME ), $exclude ) ) {
+                    unset( $files[$key] );
+                }
+            }
+        }
 
         sort( $files );
 
-        return $this->seeds = $files;
+        return $this->seedFiles = $files;
     }
 
     /**
-     * Get the table from the given records and file.
+     * Get the table name from the given records and/or file.
      *
      * @param array   $records
      * @param string  $file
      * @return string
      */
-    protected function getTable( & $records, $file ) {
+    protected function fetchTableName( & $records, $file ) {
         $table = array_get( $records, 'table', basename( $file, '.php' ) );
 
         unset( $records['table'] );
@@ -77,15 +95,23 @@ class Seeder extends Task {
     }
 
     /**
-     * Get the returned value of a file.
+     * Get the returned data definition array from a seed file.
      *
      * @param string  $path
      * @return mixed
      */
-    public function getRequire( $path ) {
+    protected function loadSeedFile( $path ) {
         if ( file_exists( $path ) ) return require $path;
 
         throw new FileNotFoundException( "File does not exist at path {$path}" );
     }
 
+    protected function getParameter( $key ) {
+        if ( isset( $_SERVER['CLI'][Str::upper( $key )] ) ) {
+            return ( $_SERVER['CLI'][Str::upper( $key )] == '' ) ? true : $_SERVER['CLI'][Str::upper( $key )];
+        }
+        else {
+            return false;
+        }
+    }
 }
